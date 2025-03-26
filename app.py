@@ -3,7 +3,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pickle
+import os
 
+# Define the LSTM model structure
 class AirQualityLSTM(nn.Module):
     def __init__(self, input_size=13, hidden_size=100, output_size=13):
         super(AirQualityLSTM, self).__init__()
@@ -14,15 +16,8 @@ class AirQualityLSTM(nn.Module):
         lstm_out, _ = self.lstm(x)
         return self.fc(lstm_out[:, -1, :])
 
+# Create Flask app
 app = Flask(__name__)
-
-# Load model and scaler
-model = AirQualityLSTM()
-model.load_state_dict(torch.load('model/lstm_model.pt', map_location=torch.device('cpu')))
-model.eval()
-
-with open('model/scaler.pkl', 'rb') as f:
-    scaler = pickle.load(f)
 
 @app.route('/', methods=['GET'])
 def home():
@@ -31,20 +26,35 @@ def home():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
+        # Load model and scaler only when needed (saves memory!)
+        model = AirQualityLSTM()
+        model.load_state_dict(torch.load('model/lstm_model.pt', map_location=torch.device('cpu')))
+        model.eval()
+
+        with open('model/scaler.pkl', 'rb') as f:
+            scaler = pickle.load(f)
+
         data = request.get_json()
+
+        if 'sequence' not in data:
+            return jsonify({'error': 'Missing "sequence" in request body'}), 400
+
         sequence = np.array(data['sequence'], dtype=np.float32)
 
         if sequence.shape != (24, 13):
-            return jsonify({"error": "Input must be a 24x13 array"}), 400
+            return jsonify({'error': 'Input must be a 24x13 array'}), 400
 
-        sequence_tensor = torch.tensor(sequence).unsqueeze(0)
+        input_tensor = torch.tensor(sequence).unsqueeze(0)  # (1, 24, 13)
 
         with torch.no_grad():
-            prediction = model(sequence_tensor).numpy().flatten().tolist()
+            prediction = model(input_tensor).numpy().flatten().tolist()
 
-        return jsonify({"predicted_values": prediction})
+        return jsonify({'predicted_values': prediction})
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
+# Run the app with proper port binding for Render
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
