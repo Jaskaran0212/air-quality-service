@@ -5,7 +5,7 @@ import numpy as np
 import pickle
 import os
 
-# Define the LSTM model structure
+# Define the LSTM model structure.
 class AirQualityLSTM(nn.Module):
     def __init__(self, input_size=13, hidden_size=100, output_size=13):
         super(AirQualityLSTM, self).__init__()
